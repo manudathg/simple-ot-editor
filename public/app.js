@@ -1,4 +1,8 @@
 const editor = document.getElementById("editor");
+const toolbar = document.getElementById("toolbar");
+const styleSelect = document.getElementById("style-select");
+const colorPicker = document.getElementById("color-picker");
+const clearFormatButton = document.getElementById("clear-format");
 const presenceEl = document.getElementById("presence");
 const eventLogEl = document.getElementById("event-log");
 const documentNameEl = document.getElementById("document-name");
@@ -76,6 +80,24 @@ function updatePendingCount() {
   pendingCountEl.textContent = String((pending ? 1 : 0) + buffer.length);
 }
 
+function normalizeHtml(value) {
+  const trimmed = value.trim();
+  return trimmed === "" ? "<p><br></p>" : trimmed;
+}
+
+function getEditorValue() {
+  return normalizeHtml(editor.innerHTML);
+}
+
+function replaceEditorValue(nextValue) {
+  suppressInput = true;
+  const normalized = normalizeHtml(nextValue);
+  editor.innerHTML = normalized;
+  previousValue = normalized;
+  currentText = normalized;
+  suppressInput = false;
+}
+
 function recomputeLocalText() {
   let nextText = serverText;
 
@@ -88,18 +110,6 @@ function recomputeLocalText() {
   }
 
   replaceEditorValue(nextText);
-}
-
-function replaceEditorValue(nextValue) {
-  const selectionStart = editor.selectionStart;
-  const selectionEnd = editor.selectionEnd;
-  suppressInput = true;
-  editor.value = nextValue;
-  previousValue = nextValue;
-  currentText = nextValue;
-  const nextCursor = Math.min(selectionStart, nextValue.length);
-  editor.setSelectionRange(nextCursor, Math.min(selectionEnd, nextValue.length));
-  suppressInput = false;
 }
 
 function applyOperation(text, operation) {
@@ -182,6 +192,7 @@ function transformOperation(operation, against) {
     if (result.length < 0) {
       result.length = 0;
     }
+
     return result;
   }
 
@@ -203,12 +214,7 @@ function flushBuffer() {
   }
 
   pending = buffer.shift();
-  socket.send(
-    JSON.stringify({
-      type: "operation",
-      operation: pending
-    })
-  );
+  socket.send(JSON.stringify({ type: "operation", operation: pending }));
   setSyncStatus("syncing", "Syncing");
   updatePendingCount();
 }
@@ -285,12 +291,12 @@ function queueDiffOperations(oldValue, newValue) {
 function resetLocalState(nextText = "", nextRevision = 0) {
   pending = null;
   buffer = [];
-  serverText = nextText;
-  currentText = nextText;
-  previousValue = nextText;
+  serverText = normalizeHtml(nextText);
+  currentText = serverText;
+  previousValue = serverText;
   updateRevision(nextRevision);
   updatePendingCount();
-  replaceEditorValue(nextText);
+  replaceEditorValue(serverText);
 }
 
 function disconnect(reason = "Disconnected") {
@@ -302,6 +308,11 @@ function disconnect(reason = "Disconnected") {
     currentSocket.close();
   }
   logEvent(reason);
+}
+
+function applyToolbarCommand(command, value = null) {
+  editor.focus();
+  document.execCommand(command, false, value);
 }
 
 function connect() {
@@ -348,26 +359,26 @@ function connect() {
       documentNameEl.textContent = message.document.name;
       clientNameEl.textContent = client.name;
       clientIdEl.textContent = client.clientId;
-      serverText = message.document.text;
+      serverText = normalizeHtml(message.document.text);
       updateRevision(message.document.revision);
       renderPresence(message.users);
       updatePendingCount();
       logEvent(`Joined ${message.document.name} as ${client.name}.`);
 
-      if (reconnectingWithDraft && localDraft !== message.document.text) {
+      if (reconnectingWithDraft && normalizeHtml(localDraft) !== serverText) {
         pending = null;
         buffer = [];
         replaceEditorValue(localDraft);
-        previousValue = message.document.text;
-        currentText = localDraft;
-        queueDiffOperations(message.document.text, localDraft);
-        previousValue = localDraft;
+        previousValue = serverText;
+        currentText = normalizeHtml(localDraft);
+        queueDiffOperations(serverText, currentText);
+        previousValue = currentText;
         reconnectingWithDraft = false;
         return;
       }
 
       reconnectingWithDraft = false;
-      replaceEditorValue(message.document.text);
+      replaceEditorValue(serverText);
       return;
     }
 
@@ -378,10 +389,8 @@ function connect() {
     }
 
     if (message.type === "ack") {
-      if (!pending || pending.id !== message.operationId) {
-        serverText = message.text;
-      } else {
-        serverText = message.text;
+      serverText = normalizeHtml(message.text);
+      if (pending && pending.id === message.operationId) {
         pending = null;
       }
 
@@ -399,7 +408,7 @@ function connect() {
     }
 
     if (message.type === "remote-operation") {
-      serverText = message.text;
+      serverText = normalizeHtml(message.text);
       updateRevision(message.revision);
       rebasePending(message.operation);
       recomputeLocalText();
@@ -425,7 +434,7 @@ editor.addEventListener("input", () => {
     return;
   }
 
-  const nextValue = editor.value;
+  const nextValue = getEditorValue();
 
   if (!isConnected()) {
     previousValue = nextValue;
@@ -437,6 +446,31 @@ editor.addEventListener("input", () => {
   queueDiffOperations(previousValue, nextValue);
   previousValue = nextValue;
   currentText = nextValue;
+});
+
+toolbar.addEventListener("mousedown", (event) => {
+  event.preventDefault();
+});
+
+toolbar.addEventListener("click", (event) => {
+  const button = event.target.closest("[data-command]");
+  if (!button) {
+    return;
+  }
+
+  applyToolbarCommand(button.dataset.command);
+});
+
+styleSelect.addEventListener("change", () => {
+  applyToolbarCommand("formatBlock", styleSelect.value);
+});
+
+colorPicker.addEventListener("input", () => {
+  applyToolbarCommand("foreColor", colorPicker.value);
+});
+
+clearFormatButton.addEventListener("click", () => {
+  applyToolbarCommand("removeFormat");
 });
 
 syncToggleEl.addEventListener("click", () => {

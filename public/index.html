@@ -8,38 +8,15 @@
   </head>
   <body>
     <div class="page">
-      <header class="hero">
-        <div>
+      <header class="hero-copy">
+        <div class="hero-text">
           <p class="eyebrow">Operational Transform Demo</p>
           <h1>Collaborative text editing on localhost</h1>
           <p class="subhead">
-            Open this page in two or more tabs. Every keystroke becomes an explicit insert or
-            delete operation, then the server rebases concurrent changes before broadcasting them.
+            Open this page in two or more tabs. The editor now supports basic rich text controls,
+            while the OT layer still rebases concurrent insert and delete operations over the
+            document's serialized HTML.
           </p>
-        </div>
-        <div class="hero-card">
-          <div class="metric">
-            <span>Document</span>
-            <strong id="document-name">Connecting...</strong>
-          </div>
-          <div class="metric">
-            <span>Session</span>
-            <strong>demo-doc</strong>
-          </div>
-          <div class="metric">
-            <span>Revision</span>
-            <strong id="revision">0</strong>
-          </div>
-          <div class="metric">
-            <span>Sync</span>
-            <button id="sync-toggle" class="status-pill status-connecting" type="button">
-              Connecting
-            </button>
-          </div>
-          <div class="metric">
-            <span>Session controls</span>
-            <button id="reset-button" class="action-button" type="button">Reset</button>
-          </div>
         </div>
       </header>
 
@@ -48,20 +25,65 @@
           <div class="panel-header">
             <div>
               <h2>Shared document</h2>
-              <p>Plain text only. The OT engine handles concurrent insert/delete operations.</p>
+              <p>Rich text toolbar on top, HTML-string OT underneath.</p>
             </div>
             <div class="presence" id="presence"></div>
           </div>
-          <textarea
+          <div class="toolbar" id="toolbar">
+            <button class="tool-button" type="button" data-command="bold"><strong>B</strong></button>
+            <button class="tool-button" type="button" data-command="italic"><em>I</em></button>
+            <button class="tool-button" type="button" data-command="underline"><u>U</u></button>
+            <select class="tool-select" id="style-select">
+              <option value="P">Paragraph</option>
+              <option value="H1">Heading 1</option>
+              <option value="H2">Heading 2</option>
+              <option value="BLOCKQUOTE">Quote</option>
+            </select>
+            <label class="color-control">
+              <span>Color</span>
+              <input id="color-picker" type="color" value="#1f2c34" />
+            </label>
+            <button class="tool-button" type="button" id="clear-format">Clear</button>
+          </div>
+          <div
             id="editor"
+            class="editor-surface"
+            contenteditable="true"
             spellcheck="false"
-            autocomplete="off"
-            autocorrect="off"
-            autocapitalize="off"
-          ></textarea>
+          ></div>
         </section>
 
         <aside class="sidebar">
+          <section class="card">
+            <h3>Document</h3>
+            <dl class="info-list">
+              <div>
+                <dt>Document</dt>
+                <dd id="document-name">Connecting...</dd>
+              </div>
+              <div>
+                <dt>Session</dt>
+                <dd>demo-doc</dd>
+              </div>
+              <div>
+                <dt>Revision</dt>
+                <dd id="revision">0</dd>
+              </div>
+              <div>
+                <dt>Sync</dt>
+                <dd>
+                  <button id="sync-toggle" class="status-pill status-connecting" type="button">
+                    Connecting
+                  </button>
+                </dd>
+              </div>
+              <div>
+                <dt>Session controls</dt>
+                <dd><button id="reset-button" class="action-button" type="button">Reset</button></dd>
+              </div>
+            </dl>
+          </section>
+
           <section class="card">
             <h3>Client</h3>
             <dl class="info-list">
@@ -88,9 +110,9 @@
             <h3>How to demo</h3>
             <ul class="notes">
               <li>Open two tabs pointing at the same localhost URL.</li>
+              <li>Apply bold, italics, headings, quotes, and colors.</li>
               <li>Type in both tabs at nearly the same time.</li>
-              <li>Watch revision numbers and sync status change.</li>
-              <li>Notice that all tabs converge to the same text.</li>
+              <li>Disconnect one tab, edit locally, then reconnect it.</li>
             </ul>
           </section>
 

@@ -13,9 +13,11 @@ For a plain-text, single-document localhost demo, OT is a good fit because:
 
 This project is not arguing that OT is always better than CRDTs. It is choosing OT because it gives a clean teaching model for a small centralized demo.
 
+The current editor is rich text in the browser, but the synchronization model is still linear OT over serialized HTML. That is an intentional simplification for readability.
+
 ## High-Level System
 
-- The browser renders a textarea and sends text operations over WebSocket.
+- The browser renders a `contenteditable` surface and sends linear text operations over the document's HTML string.
 - The server keeps the authoritative document and revision history in memory.
 - The OT engine rebases operations whenever concurrent edits exist.
 - The server acknowledges the sender and broadcasts the committed operation to everyone else.
@@ -41,7 +43,7 @@ The important idea is that operations target a known document revision. If the d
 ## Operation Flow
 
 1. A user types into the textarea.
-2. The browser computes a minimal contiguous change between the old and new value.
+2. The browser computes a minimal contiguous change between the old and new HTML.
 3. The browser turns that into one or two operations:
    - delete first, if text was removed
    - insert second, if text was added
@@ -113,11 +115,12 @@ This is enough to demonstrate:
 - server acknowledgement
 - rebasing local work when remote edits arrive first
 - a lightweight manual disconnect/reconnect demo flow
+- basic rich text controls layered over the same OT pipeline
 
 ## Limitations
 
 - Single shared document
-- Plain text only
+- Rich text synchronization is HTML-string based, not structure-aware
 - Minimal diffing strategy
 - Minimal WebSocket framing support
 - Reconnect recovery is intentionally draft-based rather than a full offline operation journal

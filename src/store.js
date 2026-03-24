@@ -3,7 +3,7 @@ const { applyOperation, rebaseOperation } = require("./ot");
 class DocumentStore {
   constructor() {
     this.initialText =
-      "This is a small Operational Transform demo.\nOpen this page in two tabs and type at the same time.\n";
+      "<h1>Simple OT Editor</h1><p>This is a small Operational Transform demo with a lightweight rich text toolbar.</p><p>Open this page in two tabs, format some text, and type at the same time.</p>";
     this.document = this.createInitialDocument();
   }
 

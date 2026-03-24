@@ -1,6 +1,6 @@
 # Simple OT Editor
 
-A small educational collaborative text editor that demonstrates real-time multi-user editing on `localhost` using Operational Transform (OT) implemented directly in the project.
+A small educational collaborative editor that demonstrates real-time multi-user editing on `localhost` using Operational Transform (OT) implemented directly in the project.
 
 Open the app in two or more browser tabs, type in both tabs at the same time, and watch the document converge as the server rebases concurrent insert and delete operations before broadcasting them back out.
 
@@ -26,7 +26,7 @@ That makes it useful as:
 - No database
 - No build step
 - Explicit operation objects, revision numbers, rebasing, and acknowledgements
-- A lightweight UI that exposes connected users, session metadata, sync state, revision progress, reconnect testing, and session reset
+- A lightweight UI that exposes connected users, session metadata, sync state, revision progress, reconnect testing, session reset, and basic rich text controls
 
 ## Project Structure
 
@@ -69,10 +69,10 @@ You can also:
 
 ## How The Demo Works
 
-Each local edit is converted into one or two plain-text operations:
+Each local edit is converted into one or two linear text operations over the document's serialized HTML:
 
-- `insert`: insert some text at a position
-- `delete`: remove a number of characters from a position
+- `insert`: insert characters into the HTML string
+- `delete`: remove characters from the HTML string
 
 Every operation includes:
 
@@ -82,7 +82,7 @@ Every operation includes:
 - position
 - inserted text or deleted length
 
-The client applies its own edits optimistically, sends them to the server, and waits for an acknowledgement. If another client’s operation arrives first, the local pending operation is transformed so both users still converge on the same final document.
+The browser renders that HTML inside a `contenteditable` editor with formatting controls for bold, italics, underline, text color, and block style changes. The client applies its own edits optimistically, sends them to the server, and waits for an acknowledgement. If another client’s operation arrives first, the local pending operation is transformed so both users still converge on the same final HTML document.
 
 ## OT Overview In Simple Language
 
@@ -105,7 +105,7 @@ This demo implements those transform rules directly in [`src/ot.js`](/Users/manu
 
 ## Architecture Summary
 
-- The browser keeps local editor state, one pending operation, a small buffer, and a manual disconnect mode for demoing reconnect behavior.
+- The browser keeps local editor state, one pending operation, a small buffer, a manual disconnect mode, and a rich text toolbar layered on top of `contenteditable`.
 - The server keeps the authoritative document text, a revision counter, and operation history.
 - The server rebases incoming operations against anything committed since the sender’s `baseRevision`.
 - The server increments the revision and broadcasts the committed operation.
@@ -116,7 +116,7 @@ More detail is in [`docs/architecture.md`](/Users/manu/Documents/project/simple-
 
 ## Tradeoffs And Limitations
 
-- Plain text only
+- Rich text is implemented as editable HTML rather than a structured document model
 - Single shared document
 - In-memory state only
 - No persistence
@@ -125,6 +125,7 @@ More detail is in [`docs/architecture.md`](/Users/manu/Documents/project/simple-
 - No undo/redo
 - The WebSocket implementation is intentionally minimal and only supports what this demo needs
 - The client-side diff logic assumes a single contiguous edit per `input` event, which is fine for a local educational demo but not a full editor engine
+- Formatting is synchronized as HTML string edits, so markup-level conflicts are more fragile than a real rich-text OT or CRDT model
 - Offline reconnect is intentionally simple: a disconnected tab turns its local draft into fresh operations on reconnect rather than performing a full historical offline rebase
 
 ## Future Improvements

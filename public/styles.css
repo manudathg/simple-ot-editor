@@ -33,12 +33,12 @@ body {
   padding: 32px 0 40px;
 }
 
-.hero {
-  display: grid;
-  grid-template-columns: 1.7fr 1fr;
-  gap: 24px;
-  align-items: start;
+.hero-copy {
   margin-bottom: 24px;
+}
+
+.hero-text {
+  max-width: 760px;
 }
 
 .eyebrow {
@@ -71,20 +71,12 @@ h1 {
   font-size: 1rem;
 }
 
-.hero-card,
 .card,
 .editor-panel {
   background: var(--panel);
   backdrop-filter: blur(16px);
   border: 1px solid var(--border);
   box-shadow: var(--shadow);
-}
-
-.hero-card {
-  border-radius: 24px;
-  padding: 20px;
-  display: grid;
-  gap: 16px;
 }
 
 .metric span,
@@ -155,6 +147,7 @@ h1 {
 .layout {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 320px;
+  align-items: start;
   gap: 24px;
 }
 
@@ -200,22 +193,101 @@ h1 {
   border-radius: 999px;
 }
 
-#editor {
+.toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-bottom: 14px;
+  padding: 12px;
+  border-radius: 20px;
+  border: 1px solid rgba(31, 44, 52, 0.08);
+  background: rgba(255, 253, 248, 0.92);
+}
+
+.tool-button,
+.tool-select,
+.color-control {
+  border-radius: 999px;
+  border: 1px solid rgba(31, 44, 52, 0.12);
+  background: #fffdf8;
+  color: var(--text);
+  font: inherit;
+}
+
+.tool-button,
+.tool-select {
+  min-height: 40px;
+  padding: 0 14px;
+}
+
+.tool-button {
+  cursor: pointer;
+}
+
+.tool-select {
+  cursor: pointer;
+}
+
+.color-control {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  padding: 0 12px;
+  min-height: 40px;
+}
+
+.color-control span {
+  font-size: 0.92rem;
+  color: var(--muted);
+}
+
+.color-control input {
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: none;
+  background: transparent;
+}
+
+.editor-surface {
   width: 100%;
   min-height: 540px;
   padding: 20px;
-  resize: vertical;
   border-radius: 22px;
   border: 1px solid rgba(31, 44, 52, 0.1);
   background: rgba(255, 253, 248, 0.92);
   color: var(--text);
-  font: 1rem/1.55 "SFMono-Regular", "Menlo", monospace;
+  font: 1rem/1.65 "Georgia", "Iowan Old Style", serif;
   outline: none;
+  overflow: auto;
 }
 
-#editor:focus {
+.editor-surface:focus {
   border-color: rgba(31, 122, 236, 0.4);
   box-shadow: 0 0 0 4px var(--accent-soft);
+}
+
+.editor-surface h1,
+.editor-surface h2,
+.editor-surface p,
+.editor-surface blockquote {
+  margin: 0 0 0.8em;
+}
+
+.editor-surface h1 {
+  font-size: 2rem;
+  line-height: 1.1;
+}
+
+.editor-surface h2 {
+  font-size: 1.45rem;
+  line-height: 1.2;
+}
+
+.editor-surface blockquote {
+  padding-left: 16px;
+  border-left: 3px solid rgba(31, 122, 236, 0.28);
+  color: #46545f;
 }
 
 .sidebar {
@@ -262,7 +334,6 @@ h1 {
 }
 
 @media (max-width: 960px) {
-  .hero,
   .layout {
     grid-template-columns: 1fr;
   }
