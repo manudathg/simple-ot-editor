@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Simple OT Editor</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <div class="page">
+      <header class="hero">
+        <div>
+          <p class="eyebrow">Operational Transform Demo</p>
+          <h1>Collaborative text editing on localhost</h1>
+          <p class="subhead">
+            Open this page in two or more tabs. Every keystroke becomes an explicit insert or
+            delete operation, then the server rebases concurrent changes before broadcasting them.
+          </p>
+        </div>
+        <div class="hero-card">
+          <div class="metric">
+            <span>Document</span>
+            <strong id="document-name">Connecting...</strong>
+          </div>
+          <div class="metric">
+            <span>Session</span>
+            <strong>demo-doc</strong>
+          </div>
+          <div class="metric">
+            <span>Revision</span>
+            <strong id="revision">0</strong>
+          </div>
+          <div class="metric">
+            <span>Sync</span>
+            <button id="sync-toggle" class="status-pill status-connecting" type="button">
+              Connecting
+            </button>
+          </div>
+          <div class="metric">
+            <span>Session controls</span>
+            <button id="reset-button" class="action-button" type="button">Reset</button>
+          </div>
+        </div>
+      </header>
+
+      <main class="layout">
+        <section class="editor-panel">
+          <div class="panel-header">
+            <div>
+              <h2>Shared document</h2>
+              <p>Plain text only. The OT engine handles concurrent insert/delete operations.</p>
+            </div>
+            <div class="presence" id="presence"></div>
+          </div>
+          <textarea
+            id="editor"
+            spellcheck="false"
+            autocomplete="off"
+            autocorrect="off"
+            autocapitalize="off"
+          ></textarea>
+        </section>
+
+        <aside class="sidebar">
+          <section class="card">
+            <h3>Client</h3>
+            <dl class="info-list">
+              <div>
+                <dt>Name</dt>
+                <dd id="client-name">-</dd>
+              </div>
+              <div>
+                <dt>Client ID</dt>
+                <dd id="client-id">-</dd>
+              </div>
+              <div>
+                <dt>Known revision</dt>
+                <dd id="known-revision">0</dd>
+              </div>
+              <div>
+                <dt>Pending queue</dt>
+                <dd id="pending-count">0</dd>
+              </div>
+            </dl>
+          </section>
+
+          <section class="card">
+            <h3>How to demo</h3>
+            <ul class="notes">
+              <li>Open two tabs pointing at the same localhost URL.</li>
+              <li>Type in both tabs at nearly the same time.</li>
+              <li>Watch revision numbers and sync status change.</li>
+              <li>Notice that all tabs converge to the same text.</li>
+            </ul>
+          </section>
+
+          <section class="card">
+            <h3>Recent events</h3>
+            <div id="event-log" class="event-log"></div>
+          </section>
+        </aside>
+      </main>
+    </div>
+
+    <script src="/app.js"></script>
+  </body>
+  </html>

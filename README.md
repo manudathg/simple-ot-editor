@@ -1,0 +1,160 @@
+# Simple OT Editor
+
+A small educational collaborative text editor that demonstrates real-time multi-user editing on `localhost` using Operational Transform (OT) implemented directly in the project.
+
+Open the app in two or more browser tabs, type in both tabs at the same time, and watch the document converge as the server rebases concurrent insert and delete operations before broadcasting them back out.
+
+## Why This Exists
+
+Most collaborative editing demos hide the core behavior behind large collaboration frameworks, CRDT libraries, or hosted sync services. This project does the opposite:
+
+- It uses plain browser JavaScript on the frontend.
+- It uses a small Node.js server with an in-memory document store.
+- It implements a minimal OT engine from scratch for plain text.
+- It keeps the architecture small enough that a GitHub reader can understand the full flow in one sitting.
+
+That makes it useful as:
+
+- an educational OT reference
+- a local demo for product or engineering conversations
+- a starting point for experimenting with collaborative editing ideas
+
+## What Makes It Notable
+
+- No collaboration frameworks
+- No OT or CRDT libraries
+- No database
+- No build step
+- Explicit operation objects, revision numbers, rebasing, and acknowledgements
+- A lightweight UI that exposes connected users, session metadata, sync state, revision progress, reconnect testing, and session reset
+
+## Project Structure
+
+```text
+simple-ot-editor/
+  package.json
+  server.js
+  README.md
+  docs/
+    architecture.md
+    demo-script.md
+  src/
+    ot.js
+    store.js
+  public/
+    index.html
+    styles.css
+    app.js
+```
+
+## Quick Start
+
+### Requirements
+
+- Node.js 18+
+
+### Run Locally
+
+```bash
+cd /Users/manu/Documents/project/simple-ot-editor
+npm start
+```
+
+Then open [http://localhost:3000](http://localhost:3000) in two or more browser tabs.
+
+You can also:
+
+- click the sync button to disconnect a single tab, make local-only edits, and reconnect later
+- click `Reset` to restore the shared document and revision history to the initial demo state
+
+## How The Demo Works
+
+Each local edit is converted into one or two plain-text operations:
+
+- `insert`: insert some text at a position
+- `delete`: remove a number of characters from a position
+
+Every operation includes:
+
+- client id
+- operation id
+- base revision
+- position
+- inserted text or deleted length
+
+The client applies its own edits optimistically, sends them to the server, and waits for an acknowledgement. If another client’s operation arrives first, the local pending operation is transformed so both users still converge on the same final document.
+
+## OT Overview In Simple Language
+
+Operational Transform is a way to keep multiple editors in sync when people make changes at the same time.
+
+Instead of sending the entire document on every keystroke, clients send small edit operations such as:
+
+- “insert `A` at position 5”
+- “delete 3 characters starting at position 10”
+
+If two people edit concurrently, one operation may need to be adjusted before it can be applied cleanly on top of the other. That adjustment is the “transform” part.
+
+Examples:
+
+- If another user inserts text before your insert position, your insert shifts to the right.
+- If another user deletes text before your cursor, your edit may shift to the left.
+- If two deletes overlap, the second delete is reduced so the same characters are not removed twice.
+
+This demo implements those transform rules directly in [`src/ot.js`](/Users/manu/Documents/project/simple-ot-editor/src/ot.js).
+
+## Architecture Summary
+
+- The browser keeps local editor state, one pending operation, a small buffer, and a manual disconnect mode for demoing reconnect behavior.
+- The server keeps the authoritative document text, a revision counter, and operation history.
+- The server rebases incoming operations against anything committed since the sender’s `baseRevision`.
+- The server increments the revision and broadcasts the committed operation.
+- Other clients apply the remote operation and rebase any local pending work.
+- A disconnected tab keeps its draft locally; on reconnect it diffs that draft against the latest server snapshot and submits the resulting operations.
+
+More detail is in [`docs/architecture.md`](/Users/manu/Documents/project/simple-ot-editor/docs/architecture.md).
+
+## Tradeoffs And Limitations
+
+- Plain text only
+- Single shared document
+- In-memory state only
+- No persistence
+- No auth
+- No cursor presence
+- No undo/redo
+- The WebSocket implementation is intentionally minimal and only supports what this demo needs
+- The client-side diff logic assumes a single contiguous edit per `input` event, which is fine for a local educational demo but not a full editor engine
+- Offline reconnect is intentionally simple: a disconnected tab turns its local draft into fresh operations on reconnect rather than performing a full historical offline rebase
+
+## Future Improvements
+
+- Add support for multiple named documents
+- Preserve selections and cursors more carefully during remote updates
+- Add automated transform tests for more concurrency scenarios
+- Add reconnect and resync flows after disconnects
+- Add persistence with a tiny file or SQLite-backed history
+- Add a richer event inspector for showing raw operations live
+
+## Demo Script
+
+1. Start the server and open the app in two tabs.
+2. Point out the connected users, session id, sync state, and revision counter.
+3. Type in one tab and show the other tab updating instantly.
+4. Type in both tabs at nearly the same time to show concurrent edits converging.
+5. Explain that every change is being represented as insert/delete operations rather than whole-document sync.
+6. Explain that the OT engine is implemented directly in the project, without any collaboration framework.
+
+A more presentation-oriented narrative is in [`docs/demo-script.md`](/Users/manu/Documents/project/simple-ot-editor/docs/demo-script.md).
+
+## Why Building It Without Collaboration Frameworks Is Interesting
+
+It strips the problem down to the core mechanics:
+
+- operation modeling
+- revision tracking
+- conflict handling
+- optimistic UI
+- server acknowledgement
+
+That makes the project a useful teaching tool. It shows the shape of a collaborative editor without the abstractions that usually hide the interesting part.

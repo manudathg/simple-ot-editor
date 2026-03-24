@@ -1,0 +1,14 @@
+{
+  "name": "simple-ot-editor",
+  "version": "1.0.0",
+  "description": "A small collaborative text editor demo that implements Operational Transform from scratch.",
+  "private": true,
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "check": "node --check server.js && node --check src/ot.js && node --check src/store.js && node --check public/app.js"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
