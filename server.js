@@ -4,7 +4,7 @@ const crypto = require("node:crypto");
 const http = require("node:http");
 const { URL } = require("node:url");
 
-const { DocumentStore } = require("./src/store");
+const { TenantDocumentStore } = require("./src/store");
 
 const PORT = process.env.PORT || 3000;
 const PUBLIC_DIR = path.join(__dirname, "public");
@@ -15,45 +15,28 @@ const MIME_TYPES = {
   ".json": "application/json; charset=utf-8"
 };
 
-const store = new DocumentStore();
+const store = new TenantDocumentStore({
+  dataFile: path.join(__dirname, "data", "tenants.json"),
+  maxEditors: 3
+});
 const sockets = new Map();
 
 function sendJson(socket, message) {
   socket.write(encodeWebSocketFrame(JSON.stringify(message)));
 }
 
-function broadcast(message, excludeSocket) {
-  for (const socket of sockets.keys()) {
-    if (socket !== excludeSocket) {
-      sendJson(socket, message);
-    }
-  }
+function getTenantClients(tenantId) {
+  return Array.from(sockets.entries())
+    .filter(([, client]) => client.tenantId === tenantId)
+    .map(([socket, client]) => ({ socket, client }));
 }
 
-function broadcastPresence() {
-  const users = Array.from(sockets.values()).map((client) => ({
-    clientId: client.clientId,
-    name: client.name,
-    color: client.color
-  }));
-
-  broadcast({
-    type: "presence",
-    users
-  });
+function getUsedSlots(tenantId) {
+  return new Set(getTenantClients(tenantId).map(({ client }) => client.slot));
 }
 
-function randomColor() {
-  const palette = ["#ff6b6b", "#1f7aec", "#00a37a", "#b86bff", "#ff9f1a", "#4d6274"];
-  return palette[Math.floor(Math.random() * palette.length)];
-}
-
-function getUsedSlots() {
-  return new Set(Array.from(sockets.values()).map((client) => client.slot));
-}
-
-function allocateClientSlot(preferredSlot) {
-  const usedSlots = getUsedSlots();
+function allocateClientSlot(tenantId, preferredSlot) {
+  const usedSlots = getUsedSlots(tenantId);
 
   if (preferredSlot && !usedSlots.has(preferredSlot)) {
     return preferredSlot;
@@ -67,11 +50,73 @@ function allocateClientSlot(preferredSlot) {
   return slot;
 }
 
-function createClient(preferred = {}) {
-  const slot = allocateClientSlot(preferred.slot);
+function getEditorCount(tenantId) {
+  return getTenantClients(tenantId).filter(({ client }) => client.role === "editor").length;
+}
+
+function broadcastToTenant(tenantId, message, excludeSocket) {
+  for (const { socket } of getTenantClients(tenantId)) {
+    if (socket !== excludeSocket) {
+      sendJson(socket, message);
+    }
+  }
+}
+
+function broadcastPresence(tenantId) {
+  const clients = getTenantClients(tenantId).map(({ client }) => ({
+    clientId: client.clientId,
+    name: client.name,
+    color: client.color,
+    role: client.role
+  }));
+
+  broadcastToTenant(tenantId, {
+    type: "presence",
+    users: clients,
+    editorCount: clients.filter((client) => client.role === "editor").length,
+    maxEditors: store.maxEditors
+  });
+}
+
+function broadcastRole(clientEntry) {
+  sendJson(clientEntry.socket, {
+    type: "role",
+    role: clientEntry.client.role,
+    editorCount: getEditorCount(clientEntry.client.tenantId),
+    maxEditors: store.maxEditors
+  });
+}
+
+function maybePromoteViewer(tenantId) {
+  const editorCount = getEditorCount(tenantId);
+  if (editorCount >= store.maxEditors) {
+    return;
+  }
+
+  const viewer = getTenantClients(tenantId).find(({ client }) => client.role === "viewer");
+  if (!viewer) {
+    return;
+  }
+
+  viewer.client.role = "editor";
+  broadcastRole(viewer);
+}
+
+function randomColor() {
+  const palette = ["#ff6b6b", "#1f7aec", "#00a37a", "#b86bff", "#ff9f1a", "#4d6274"];
+  return palette[Math.floor(Math.random() * palette.length)];
+}
+
+function createClient(tenantId, preferred = {}) {
+  const slot = allocateClientSlot(tenantId, preferred.slot);
   const canReuseIdentity = preferred.slot && preferred.slot === slot;
+  const editorCount = getEditorCount(tenantId);
+  const role = editorCount < store.maxEditors ? "editor" : "viewer";
+
   return {
     slot,
+    tenantId,
+    role,
     clientId: canReuseIdentity && preferred.clientId ? preferred.clientId : `client-${slot}`,
     name: canReuseIdentity && preferred.name ? preferred.name : `User ${slot}`,
     color: preferred.color || randomColor()
@@ -107,7 +152,7 @@ function serveStaticFile(request, response) {
     response.writeHead(200, {
       "Content-Type": MIME_TYPES[path.extname(absolutePath)] || "application/octet-stream"
     });
-    response.end(data);
+    response.end(request.method === "HEAD" ? "" : data);
   });
 }
 
@@ -196,19 +241,26 @@ function decodeWebSocketFrames(buffer) {
 
 function handleClientMessage(socket, rawMessage) {
   const message = parseJsonMessage(rawMessage);
-
   if (!message) {
     return;
   }
 
+  const client = sockets.get(socket);
+  if (!client) {
+    return;
+  }
+
   if (message.type === "operation") {
-    const client = sockets.get(socket);
-    if (!client) {
+    if (client.role !== "editor") {
+      sendJson(socket, {
+        type: "error",
+        message: "This session is full. Viewers are read-only until an editor slot opens."
+      });
       return;
     }
 
     try {
-      const { snapshot, committed } = store.submitOperation({
+      const { snapshot, committed } = store.submitOperation(client.tenantId, {
         ...message.operation,
         clientId: client.clientId
       });
@@ -220,7 +272,8 @@ function handleClientMessage(socket, rawMessage) {
         text: snapshot.text
       });
 
-      broadcast(
+      broadcastToTenant(
+        client.tenantId,
         {
           type: "remote-operation",
           operation: committed,
@@ -235,17 +288,24 @@ function handleClientMessage(socket, rawMessage) {
         message: error.message
       });
     }
+
+    return;
   }
 
   if (message.type === "reset") {
-    const snapshot = store.reset();
+    if (client.role !== "editor") {
+      sendJson(socket, {
+        type: "error",
+        message: "Only active editors can reset a tenant session."
+      });
+      return;
+    }
 
-    broadcast({
+    const snapshot = store.reset(client.tenantId);
+    broadcastToTenant(client.tenantId, {
       type: "reset",
       document: snapshot
     });
-
-    return;
   }
 }
 
@@ -265,17 +325,20 @@ server.on("upgrade", (request, socket) => {
     return;
   }
 
-  const requestUrl = new URL(request.url, `http://${request.headers.host || "localhost"}`);
-  const preferredSlot = Number.parseInt(requestUrl.searchParams.get("slot") || "", 10);
-  const preferredClientId = requestUrl.searchParams.get("clientId");
-  const preferredName = requestUrl.searchParams.get("name");
-  const preferredColor = requestUrl.searchParams.get("color");
-
   const key = request.headers["sec-websocket-key"];
   if (!key) {
     socket.destroy();
     return;
   }
+
+  const requestUrl = new URL(request.url, `http://${request.headers.host || "localhost"}`);
+  const tenantId =
+    (requestUrl.searchParams.get("tenant") || "demo").trim().replace(/[^a-zA-Z0-9-_]/g, "") ||
+    "demo";
+  const preferredSlot = Number.parseInt(requestUrl.searchParams.get("slot") || "", 10);
+  const preferredClientId = requestUrl.searchParams.get("clientId");
+  const preferredName = requestUrl.searchParams.get("name");
+  const preferredColor = requestUrl.searchParams.get("color");
 
   const acceptKey = crypto
     .createHash("sha1")
@@ -292,26 +355,30 @@ server.on("upgrade", (request, socket) => {
     ].join("\r\n")
   );
 
-  const client = createClient({
+  const client = createClient(tenantId, {
     slot: Number.isFinite(preferredSlot) ? preferredSlot : null,
     clientId: preferredClientId || null,
     name: preferredName || null,
     color: preferredColor || null
   });
+
   sockets.set(socket, client);
 
   sendJson(socket, {
     type: "welcome",
     client,
-    document: store.getSnapshot(),
-    users: Array.from(sockets.values()).map((entry) => ({
-      clientId: entry.clientId,
-      name: entry.name,
-      color: entry.color
-    }))
+    document: store.getSnapshot(tenantId),
+    users: getTenantClients(tenantId).map(({ client: tenantClient }) => ({
+      clientId: tenantClient.clientId,
+      name: tenantClient.name,
+      color: tenantClient.color,
+      role: tenantClient.role
+    })),
+    editorCount: getEditorCount(tenantId),
+    maxEditors: store.maxEditors
   });
 
-  broadcastPresence();
+  broadcastPresence(tenantId);
 
   let buffered = Buffer.alloc(0);
 
@@ -329,20 +396,21 @@ server.on("upgrade", (request, socket) => {
     }
   });
 
-  socket.on("close", () => {
-    sockets.delete(socket);
-    broadcastPresence();
-  });
+  function cleanup() {
+    const disconnectedClient = sockets.get(socket);
+    if (!disconnectedClient) {
+      return;
+    }
 
-  socket.on("end", () => {
+    const tenant = disconnectedClient.tenantId;
     sockets.delete(socket);
-    broadcastPresence();
-  });
+    maybePromoteViewer(tenant);
+    broadcastPresence(tenant);
+  }
 
-  socket.on("error", () => {
-    sockets.delete(socket);
-    broadcastPresence();
-  });
+  socket.on("close", cleanup);
+  socket.on("end", cleanup);
+  socket.on("error", cleanup);
 });
 
 server.listen(PORT, () => {
