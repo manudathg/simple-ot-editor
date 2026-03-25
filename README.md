@@ -23,10 +23,10 @@ That makes it useful as:
 
 - No collaboration frameworks
 - No OT or CRDT libraries
-- No database
+- No external database
 - No build step
 - Explicit operation objects, revision numbers, rebasing, and acknowledgements
-- A lightweight UI that exposes connected users, session metadata, sync state, revision progress, reconnect testing, session reset, and basic rich text controls
+- A lightweight UI that exposes tenant/session metadata, sync state, editor capacity, reconnect testing, session reset, and basic rich text controls
 
 ## Project Structure
 
@@ -57,10 +57,30 @@ simple-ot-editor/
 
 ```bash
 cd /Users/manu/Documents/project/simple-ot-editor
+npm install
 npm start
 ```
 
 Then open [http://localhost:3000](http://localhost:3000) in two or more browser tabs.
+
+### Local Demo Flow
+
+1. Open `http://localhost:3000/?tenant=acme` in up to three tabs to join as active editors.
+2. Open the same tenant in a fourth tab to see the read-only viewer mode.
+3. Disconnect one editor tab or close it, then watch the viewer get promoted into an editor slot.
+4. Open a different tenant such as `http://localhost:3000/?tenant=globex` to see isolated document state.
+
+To try tenant isolation, append a tenant id:
+
+```text
+http://localhost:3000/?tenant=acme
+http://localhost:3000/?tenant=globex
+```
+
+### Local Data
+
+- Tenant documents are stored in `data/tenants.json`
+- Delete that file or use the in-app `Reset` button if you want to start from a clean local state
 
 You can also:
 
@@ -69,7 +89,7 @@ You can also:
 
 ## How The Demo Works
 
-Each local edit is converted into one or two linear text operations over the document's serialized HTML:
+Each tenant gets its own shared document. Within a tenant, local edits are converted into one or two linear text operations over the document's serialized HTML:
 
 - `insert`: insert characters into the HTML string
 - `delete`: remove characters from the HTML string
@@ -82,7 +102,7 @@ Every operation includes:
 - position
 - inserted text or deleted length
 
-The browser renders that HTML inside a `contenteditable` editor with formatting controls for bold, italics, underline, text color, and block style changes. The client applies its own edits optimistically, sends them to the server, and waits for an acknowledgement. If another client’s operation arrives first, the local pending operation is transformed so both users still converge on the same final HTML document.
+The browser renders that HTML inside a `contenteditable` editor with formatting controls for bold, italics, underline, text color, and block style changes. The first three users in a tenant are active editors. Additional users join as read-only viewers until an editor slot opens. The client applies its own edits optimistically, sends them to the server, and waits for an acknowledgement. If another client’s operation arrives first, the local pending operation is transformed so both users still converge on the same final HTML document.
 
 ## OT Overview In Simple Language
 
@@ -106,20 +126,20 @@ This demo implements those transform rules directly in [`src/ot.js`](/Users/manu
 ## Architecture Summary
 
 - The browser keeps local editor state, one pending operation, a small buffer, a manual disconnect mode, and a rich text toolbar layered on top of `contenteditable`.
-- The server keeps the authoritative document text, a revision counter, and operation history.
+- The server keeps tenant-scoped authoritative document text, revision counters, role assignment, and operation history.
 - The server rebases incoming operations against anything committed since the sender’s `baseRevision`.
 - The server increments the revision and broadcasts the committed operation.
 - Other clients apply the remote operation and rebase any local pending work.
 - A disconnected tab keeps its draft locally; on reconnect it diffs that draft against the latest server snapshot and submits the resulting operations.
+- Local persistence stores tenant documents in `data/tenants.json` so a restart does not wipe the working set.
 
 More detail is in [`docs/architecture.md`](/Users/manu/Documents/project/simple-ot-editor/docs/architecture.md).
 
 ## Tradeoffs And Limitations
 
 - Rich text is implemented as editable HTML rather than a structured document model
-- Single shared document
-- In-memory state only
-- No persistence
+- Single shared document per tenant
+- Local JSON-file persistence only
 - No auth
 - No cursor presence
 - No undo/redo
@@ -127,14 +147,16 @@ More detail is in [`docs/architecture.md`](/Users/manu/Documents/project/simple-
 - The client-side diff logic assumes a single contiguous edit per `input` event, which is fine for a local educational demo but not a full editor engine
 - Formatting is synchronized as HTML string edits, so markup-level conflicts are more fragile than a real rich-text OT or CRDT model
 - Offline reconnect is intentionally simple: a disconnected tab turns its local draft into fresh operations on reconnect rather than performing a full historical offline rebase
+- Viewer promotion is first-available, not a formal waitlist
 
 ## Future Improvements
 
-- Add support for multiple named documents
+- Add auth and per-tenant authorization
+- Add support for multiple named documents within a tenant
 - Preserve selections and cursors more carefully during remote updates
 - Add automated transform tests for more concurrency scenarios
 - Add reconnect and resync flows after disconnects
-- Add persistence with a tiny file or SQLite-backed history
+- Replace local JSON persistence with SQLite or PostgreSQL when durability and audit needs increase
 - Add a richer event inspector for showing raw operations live
 
 ## Demo Script

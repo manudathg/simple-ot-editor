@@ -5,14 +5,21 @@ const colorPicker = document.getElementById("color-picker");
 const clearFormatButton = document.getElementById("clear-format");
 const presenceEl = document.getElementById("presence");
 const eventLogEl = document.getElementById("event-log");
+const tenantIdEl = document.getElementById("tenant-id");
 const documentNameEl = document.getElementById("document-name");
 const revisionEl = document.getElementById("revision");
+const capacityStatusEl = document.getElementById("capacity-status");
 const knownRevisionEl = document.getElementById("known-revision");
 const clientNameEl = document.getElementById("client-name");
 const clientIdEl = document.getElementById("client-id");
+const clientRoleEl = document.getElementById("client-role");
 const pendingCountEl = document.getElementById("pending-count");
 const syncToggleEl = document.getElementById("sync-toggle");
 const resetButtonEl = document.getElementById("reset-button");
+
+const tenantId =
+  new URLSearchParams(window.location.search).get("tenant")?.trim().replace(/[^a-zA-Z0-9-_]/g, "") ||
+  "demo";
 
 let socket;
 let client = null;
@@ -26,21 +33,29 @@ let suppressInput = false;
 let localSequence = 0;
 let isManuallyDisconnected = false;
 let reconnectingWithDraft = false;
+let maxEditors = 3;
+let editorCount = 0;
+
+tenantIdEl.textContent = tenantId;
 
 function isConnected() {
   return socket && socket.readyState === WebSocket.OPEN;
 }
 
+function isEditor() {
+  return client?.role === "editor";
+}
+
 function getStoredClient() {
   try {
-    return JSON.parse(window.sessionStorage.getItem("simple-ot-editor-client") || "null");
+    return JSON.parse(window.sessionStorage.getItem(`simple-ot-editor-client:${tenantId}`) || "null");
   } catch {
     return null;
   }
 }
 
 function storeClientIdentity(nextClient) {
-  window.sessionStorage.setItem("simple-ot-editor-client", JSON.stringify(nextClient));
+  window.sessionStorage.setItem(`simple-ot-editor-client:${tenantId}`, JSON.stringify(nextClient));
 }
 
 function logEvent(message) {
@@ -59,13 +74,33 @@ function setSyncStatus(kind, label) {
   syncToggleEl.className = `status-pill status-${kind}`;
 }
 
+function updateCapacity(count = editorCount, max = maxEditors) {
+  editorCount = count;
+  maxEditors = max;
+  capacityStatusEl.textContent = `${count} / ${max} editors`;
+}
+
+function normalizeRole(role) {
+  return role === "viewer" ? "viewer" : "editor";
+}
+
+function applyRoleState() {
+  const editable = isEditor();
+  editor.setAttribute("contenteditable", editable ? "true" : "false");
+  editor.classList.toggle("read-only", !editable);
+  toolbar.setAttribute("aria-disabled", editable ? "false" : "true");
+  resetButtonEl.disabled = !editable;
+  clientRoleEl.textContent = client ? client.role : "-";
+}
+
 function renderPresence(users) {
   presenceEl.innerHTML = "";
 
   users.forEach((user) => {
+    const role = normalizeRole(user.role);
     const chip = document.createElement("div");
-    chip.className = "presence-user";
-    chip.innerHTML = `<span class="presence-dot" style="background:${user.color}"></span>${user.name}`;
+    chip.className = `presence-user ${role === "viewer" ? "viewer" : ""}`.trim();
+    chip.innerHTML = `<span class="presence-dot" style="background:${user.color}"></span>${user.name} (${role})`;
     presenceEl.appendChild(chip);
   });
 }
@@ -209,7 +244,7 @@ function rebasePending(againstOperation) {
 }
 
 function flushBuffer() {
-  if (!isConnected() || pending || buffer.length === 0) {
+  if (!isConnected() || !isEditor() || pending || buffer.length === 0) {
     return;
   }
 
@@ -220,7 +255,7 @@ function flushBuffer() {
 }
 
 function queueOperation(operation) {
-  if (!isConnected()) {
+  if (!isConnected() || !isEditor()) {
     buffer.push(operation);
     updatePendingCount();
     return;
@@ -311,6 +346,10 @@ function disconnect(reason = "Disconnected") {
 }
 
 function applyToolbarCommand(command, value = null) {
+  if (!isEditor()) {
+    return;
+  }
+
   editor.focus();
   document.execCommand(command, false, value);
 }
@@ -319,7 +358,7 @@ function connect() {
   isManuallyDisconnected = false;
   const protocol = window.location.protocol === "https:" ? "wss" : "ws";
   const storedClient = client || getStoredClient();
-  const params = new URLSearchParams();
+  const params = new URLSearchParams({ tenant: tenantId });
 
   if (storedClient?.slot) {
     params.set("slot", String(storedClient.slot));
@@ -339,7 +378,7 @@ function connect() {
 
   socket.addEventListener("open", () => {
     setSyncStatus("connected", "Connected");
-    logEvent("WebSocket connected.");
+    logEvent(`WebSocket connected for tenant "${tenantId}".`);
   });
 
   socket.addEventListener("close", () => {
@@ -354,16 +393,24 @@ function connect() {
 
     if (message.type === "welcome") {
       const localDraft = currentText;
-      client = message.client;
+      client = {
+        ...message.client,
+        role: normalizeRole(message.client?.role)
+      };
       storeClientIdentity(client);
       documentNameEl.textContent = message.document.name;
       clientNameEl.textContent = client.name;
       clientIdEl.textContent = client.clientId;
+      updateCapacity(
+        message.editorCount ?? (client.role === "editor" ? 1 : 0),
+        message.maxEditors ?? 3
+      );
+      applyRoleState();
       serverText = normalizeHtml(message.document.text);
       updateRevision(message.document.revision);
       renderPresence(message.users);
       updatePendingCount();
-      logEvent(`Joined ${message.document.name} as ${client.name}.`);
+      logEvent(`Joined ${message.document.name} as ${client.name} (${client.role}).`);
 
       if (reconnectingWithDraft && normalizeHtml(localDraft) !== serverText) {
         pending = null;
@@ -371,7 +418,9 @@ function connect() {
         replaceEditorValue(localDraft);
         previousValue = serverText;
         currentText = normalizeHtml(localDraft);
-        queueDiffOperations(serverText, currentText);
+        if (isEditor()) {
+          queueDiffOperations(serverText, currentText);
+        }
         previousValue = currentText;
         reconnectingWithDraft = false;
         return;
@@ -384,7 +433,21 @@ function connect() {
 
     if (message.type === "presence") {
       renderPresence(message.users);
+      updateCapacity(message.editorCount ?? editorCount, message.maxEditors ?? maxEditors);
       logEvent(`Presence updated: ${message.users.length} connected.`);
+      return;
+    }
+
+    if (message.type === "role") {
+      if (client) {
+        client.role = normalizeRole(message.role);
+      }
+      updateCapacity(message.editorCount ?? editorCount, message.maxEditors ?? maxEditors);
+      applyRoleState();
+      if (isEditor()) {
+        flushBuffer();
+      }
+      logEvent(`Role updated: ${message.role}.`);
       return;
     }
 
@@ -436,7 +499,7 @@ editor.addEventListener("input", () => {
 
   const nextValue = getEditorValue();
 
-  if (!isConnected()) {
+  if (!isConnected() || !isEditor()) {
     previousValue = nextValue;
     currentText = nextValue;
     updatePendingCount();
@@ -484,12 +547,13 @@ syncToggleEl.addEventListener("click", () => {
 });
 
 resetButtonEl.addEventListener("click", () => {
-  if (!isConnected()) {
-    logEvent("Reconnect before resetting the shared session.");
+  if (!isConnected() || !isEditor()) {
+    logEvent("Only active editors can reset this tenant session.");
     return;
   }
 
   socket.send(JSON.stringify({ type: "reset" }));
 });
 
+applyRoleState();
 connect();
